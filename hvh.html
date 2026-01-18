@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>HvH SSG-08: Collision Fixed</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Consolas', monospace; color: #fff; }
+        canvas { display: block; }
+        #menu {
+            position: absolute; top: 10px; left: 10px; width: 250px;
+            background: rgba(10, 10, 15, 0.95); border: 1px solid #444;
+            padding: 15px; display: none; z-index: 1000; border-top: 3px solid #0011ff;
+        }
+        .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        input[type="range"] { width: 100px; accent-color: #0011ff; }
+        #logs { position: absolute; top: 10px; right: 10px; text-align: right; pointer-events: none; color: #0011ff; font-size: 12px; }
+        .stat-panel { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 5px 10px; border-radius: 4px; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+
+<div id="menu">
+    <div style="font-weight: bold; margin-bottom: 10px; color: #0011ff;">dhack.xyz</div>
+    <div class="row"><span>Hitchance</span><input type="range" id="hc" min="0" max="100" value="80"></div>
+    <div class="row"><span>Aimbot FOV</span><input type="range" id="fov" min="10" max="1000" value="600"></div>
+    <div class="row"><span>AA Speed</span><input type="range" id="aa-speed" min="0" max="200" value="70"></div>
+    <div class="row"><span>AA Jitter</span><input type="range" id="aa-jitter" min="0" max="180" value="60"></div>
+    <div style="font-size: 10px; color: #666; text-align: center;">[INSERT] - MENU</div>
+</div>
+
+<div id="logs"></div>
+<div class="stat-panel" id="stats">HP: 100 | Enemy: 100</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const logs = document.getElementById('logs');
+
+const spawns = { player: {x: 150, y: 350}, bot: {x: 1050, y: 350} };
+const player = { ...spawns.player, hp: 100, angle: 0, lastShot: 0 };
+const bot = { ...spawns.bot, hp: 100, angle: 0, lastShot: 0, dir: 1, moveX: 0 };
+
+const walls = [
+    {x: 550, y: 50, w: 40, h: 250}, {x: 550, y: 450, w: 40, h: 250}, // Центр
+    {x: 250, y: 250, w: 60, h: 200}, {x: 850, y: 250, w: 60, h: 200}  // Боковые препятствия
+];
+
+let keys = {};
+let tracers = [];
+let msgQueue = [];
+
+function addLog(t) {
+    msgQueue.push({t, o: 1});
+    if(msgQueue.length > 6) msgQueue.shift();
+}
+
+window.onkeydown = e => { 
+    keys[e.code] = true; 
+    if(e.code === 'Insert') document.getElementById('menu').style.display = 
+        (document.getElementById('menu').style.display === 'block' ? 'none' : 'block');
+};
+window.onkeyup = e => keys[e.code] = false;
+
+// ПРОВЕРКА КОЛЛИЗИИ ДЛЯ ДВИЖЕНИЯ
+function isColliding(x, y) {
+    // Границы экрана
+    if (x < 20 || x > canvas.width - 20 || y < 20 || y > canvas.height - 20) return true;
+    // Стены
+    for (let w of walls) {
+        if (x > w.x - 15 && x < w.x + w.w + 15 && y > w.y - 15 && y < w.y + w.h + 15) return true;
+    }
+    return false;
+}
+
+// ПРОВЕРКА ЛИНИИ ВИДИМОСТИ ДЛЯ ПУЛЬ
+function checkLineWall(x1, y1, x2, y2) {
+    for (let w of walls) {
+        if (intersect(x1, y1, x2, y2, w.x, w.y, w.x+w.w, w.y+w.h)) return true;
+    }
+    return false;
+}
+
+function intersect(x1, y1, x2, y2, minX, minY, maxX, maxY) {
+    let t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
+    for (let i = 0; i < 4; i++) {
+        let p = i==0?-dx:i==1?dx:i==2?-dy:dy;
+        let q = i==0?x1-minX:i==1?maxX-x1:i==2?y1-minY:maxY-y1;
+        if(p==0 && q<0) return false;
+        let r = q/p;
+        if(p<0) { if(r>t1) return false; if(r>t0) t0=r; }
+        else if(p>0) { if(r<t0) return false; if(r<t1) t1=r; }
+    }
+    return t0 <= t1;
+}
+
+function performShot(atk, tgt, isLocal) {
+    const now = performance.now();
+    if (now - atk.lastShot < 800) return;
+
+    const atkMuzzle = {
+        x: atk.x + Math.cos(atk.angle * Math.PI / 180) * 25,
+        y: atk.y + Math.sin(atk.angle * Math.PI / 180) * 25
+    };
+    const tgtMuzzle = {
+        x: tgt.x + Math.cos(tgt.angle * Math.PI / 180) * 25,
+        y: tgt.y + Math.sin(tgt.angle * Math.PI / 180) * 25
+    };
+
+    // Чит видит либо тело, либо торчащее дуло
+    const canSeeCenter = !checkLineWall(atkMuzzle.x, atkMuzzle.y, tgt.x, tgt.y);
+    const canSeeMuzzle = !checkLineWall(atkMuzzle.x, atkMuzzle.y, tgtMuzzle.x, tgtMuzzle.y);
+
+    if (canSeeCenter || canSeeMuzzle) {
+        let hc = isLocal ? parseInt(document.getElementById('hc').value) : 65;
+        if (!isLocal) {
+            hc -= (parseInt(document.getElementById('aa-speed').value) / 10 + parseInt(document.getElementById('aa-jitter').value) / 15);
+        }
+
+        const isHit = Math.random() < (hc / 100);
+        const endX = isHit ? (canSeeCenter ? tgt.x : tgtMuzzle.x) : tgt.x + (Math.random()-0.5)*200;
+        const endY = isHit ? (canSeeCenter ? tgt.y : tgtMuzzle.y) : tgt.y + (Math.random()-0.5)*200;
+
+        tracers.push({x1: atkMuzzle.x, y1: atkMuzzle.y, x2: endX, y2: endY, o: 1, c: isLocal?'#0011ff':'#ff4444'});
+        
+        if (isHit) {
+            tgt.hp -= 25;
+            addLog(`${isLocal?'Enemy':'Local'} hit -25`);
+            if (tgt.hp <= 0) {
+                tgt.hp = 100;
+                tgt.x = isLocal ? spawns.bot.x : spawns.player.x;
+                tgt.y = isLocal ? spawns.bot.y : spawns.player.y;
+            }
+        }
+        atk.lastShot = now;
+    }
+}
+
+function update() {
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+
+    // ДВИЖЕНИЕ ИГРОКА С КОЛЛИЗИЕЙ
+    let nextX = player.x, nextY = player.y;
+    if(keys['KeyW']) nextY -= 4;
+    if(keys['KeyS']) nextY += 4;
+    if(keys['KeyA']) nextX -= 4;
+    if(keys['KeyD']) nextX += 4;
+
+    if (!isColliding(nextX, player.y)) player.x = nextX;
+    if (!isColliding(player.x, nextY)) player.y = nextY;
+
+    // КРУТИЛКА
+    player.angle += (parseInt(document.getElementById('aa-speed').value) * 0.1) + (Math.random()-0.5) * parseInt(document.getElementById('aa-jitter').value);
+
+    // ДВИЖЕНИЕ БОТА (HvH AI)
+    bot.angle -= 15;
+    let bNextY = bot.y + bot.dir * 4;
+    if (isColliding(bot.x, bNextY)) bot.dir *= -1;
+    else bot.y = bNextY;
+
+    bot.moveX = Math.sin(Date.now() / 600) * 3;
+    if (!isColliding(bot.x + bot.moveX, bot.y)) bot.x += bot.moveX;
+
+    performShot(player, bot, true);
+    performShot(bot, player, false);
+
+    // DRAWING
+    ctx.fillStyle = '#050505'; ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.fillStyle = '#111'; ctx.strokeStyle = '#333';
+    walls.forEach(w => { ctx.fillRect(w.x, w.y, w.w, w.h); ctx.strokeRect(w.x, w.y, w.w, w.h); });
+
+    tracers.forEach((t, i) => {
+        ctx.strokeStyle = t.c; ctx.globalAlpha = t.o;
+        ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
+        t.o -= 0.05; if(t.o <= 0) tracers.splice(i, 1);
+    });
+
+    drawEnt(player, '#0011ff', 'YOU');
+    drawEnt(bot, '#ff4444', 'ENEMY');
+
+    document.getElementById('stats').innerText = `HP: ${player.hp} | Enemy: ${bot.hp}`;
+    logs.innerHTML = msgQueue.map(m => `<div style="opacity:${m.o}">${m.t}</div>`).join('');
+    msgQueue.forEach(m => m.o -= 0.005);
+
+    requestAnimationFrame(update);
+}
+
+function drawEnt(e, color, label) {
+    ctx.strokeStyle = color;
+    ctx.strokeRect(e.x-20, e.y-20, 40, 40);
+    ctx.fillStyle = color; ctx.font = '10px Arial'; ctx.fillText(label, e.x-20, e.y-25);
+    ctx.save();
+    ctx.translate(e.x, e.y); ctx.rotate(e.angle * Math.PI / 180);
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(25, 0); ctx.stroke();
+    ctx.restore();
+}
+
+update();
+</script>
+</body>
+</html>
