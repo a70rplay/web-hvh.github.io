@@ -2,203 +2,235 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>HvH SSG-08: Collision Fixed</title>
+    <title>dhack.xyz | web-hvh</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Consolas', monospace; color: #fff; }
+        body { margin: 0; overflow: hidden; background: #050507; font-family: 'Segoe UI', sans-serif; color: #eee; }
         canvas { display: block; }
-        #menu {
-            position: absolute; top: 10px; left: 10px; width: 250px;
-            background: rgba(10, 10, 15, 0.95); border: 1px solid #444;
-            padding: 15px; display: none; z-index: 1000; border-top: 3px solid #0011ff;
+
+        #overlay {
+            position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, #0c0d12 0%, #050505 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;
         }
-        .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
-        input[type="range"] { width: 100px; accent-color: #0011ff; }
-        #logs { position: absolute; top: 10px; right: 10px; text-align: right; pointer-events: none; color: #0011ff; font-size: 12px; }
-        .stat-panel { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 5px 10px; border-radius: 4px; border: 1px solid #333; }
+        .start-btn {
+            padding: 15px 40px; background: #0055ff; color: white; border: none; cursor: pointer;
+            font-weight: bold; font-size: 20px; transition: 0.3s; border-radius: 4px; box-shadow: 0 0 20px rgba(0,85,255,0.4);
+        }
+        .start-btn:hover { background: #0044cc; transform: scale(1.05); }
+
+        #menu {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 550px; height: 400px; background: #0c0d12; border: 1px solid #1f222c;
+            display: none; flex-direction: row; z-index: 1000; box-shadow: 0 10px 40px #000;
+        }
+        #sidebar { width: 140px; background: #090a0e; border-right: 1px solid #1f222c; padding: 15px; }
+        #content { flex: 1; padding: 20px; }
+        .active-tab { color: #0055ff; font-weight: bold; border-left: 2px solid #0055ff; padding-left: 10px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 13px; }
+        input[type="range"] { accent-color: #0055ff; }
+
+        #hud { position: absolute; bottom: 20px; left: 20px; font-family: 'Consolas'; pointer-events: none; }
     </style>
 </head>
 <body>
 
-<div id="menu">
-    <div style="font-weight: bold; margin-bottom: 10px; color: #0011ff;">dhack.xyz</div>
-    <div class="row"><span>Hitchance</span><input type="range" id="hc" min="0" max="100" value="80"></div>
-    <div class="row"><span>Aimbot FOV</span><input type="range" id="fov" min="10" max="1000" value="600"></div>
-    <div class="row"><span>AA Speed</span><input type="range" id="aa-speed" min="0" max="200" value="70"></div>
-    <div class="row"><span>AA Jitter</span><input type="range" id="aa-jitter" min="0" max="180" value="60"></div>
-    <div style="font-size: 10px; color: #666; text-align: center;">[INSERT] - MENU</div>
+<div id="overlay">
+    <h1 style="color: #fff; letter-spacing: 5px; margin-bottom: 5px;">DHACK<span style="color:#0055ff">.XYZ</span></h1>
+    <p style="color: #444; margin-bottom: 30px;">Build: stable_v2.0.26</p>
+    <button class="start-btn" onclick="startGame()">CONNECT TO HVH_SERVER</button>
 </div>
 
-<div id="logs"></div>
-<div class="stat-panel" id="stats">HP: 100 | Enemy: 100</div>
+<div id="menu">
+    <div id="sidebar">
+        <div style="margin-bottom: 30px; font-size: 18px; font-weight: 900;">MENU</div>
+        <div class="active-tab">LEGIT/RAGE</div>
+        <div style="margin-top: 15px; color: #555;">VISUALS</div>
+        <div style="margin-top: 15px; color: #555;">MISC</div>
+    </div>
+    <div id="content">
+        <div class="row"><span>Aimbot FOV</span> <input type="range" id="fov" min="50" max="800" value="400"></div>
+        <div class="row"><span>Hitchance</span> <input type="range" id="hc" value="80"></div>
+        <div class="row"><span>Bhop Mode</span> <input type="checkbox" id="bhop-en" checked></div>
+        <div class="row"><span>AA Jitter</span> <input type="range" id="aa-jit" value="45"></div>
+    </div>
+</div>
+
+<div id="hud">
+    <div id="ds-status" style="color: #0055ff;">SYNCED</div>
+    HP: <span id="hp">100</span> | B-HOP SPEED: <span id="b-spd">0</span><br>
+    TARGET: <span id="target">NONE</span>
+</div>
 
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const logs = document.getElementById('logs');
 
-const spawns = { player: {x: 150, y: 350}, bot: {x: 1050, y: 350} };
-const player = { ...spawns.player, hp: 100, angle: 0, lastShot: 0 };
-const bot = { ...spawns.bot, hp: 100, angle: 0, lastShot: 0, dir: 1, moveX: 0 };
-
-const walls = [
-    {x: 550, y: 50, w: 40, h: 250}, {x: 550, y: 450, w: 40, h: 250}, // Центр
-    {x: 250, y: 250, w: 60, h: 200}, {x: 850, y: 250, w: 60, h: 200}  // Боковые препятствия
+let gameRunning = false;
+let player = { x: 200, y: 350, hp: 100, angle: 0, lastS: 0, velX: 0, velY: 0, bSpeed: 0 };
+let real = { x: 200, y: 350 };
+let bot = { x: 1000, y: 350, hp: 100, angle: 0, lastS: 0, targetX: 1000, targetY: 350, wait: 0 };
+let walls = [
+    {x: 550, y: 100, w: 40, h: 200, pen: false},
+    {x: 550, y: 300, w: 40, h: 150, pen: true},
+    {x: 550, y: 450, w: 40, h: 200, pen: false},
+    {x: 300, y: 300, w: 60, h: 60, pen: true}
 ];
 
-let keys = {};
-let tracers = [];
-let msgQueue = [];
+let tracers = [], keys = {}, isDs = false;
+let hitmarker = 0;
 
-function addLog(t) {
-    msgQueue.push({t, o: 1});
-    if(msgQueue.length > 6) msgQueue.shift();
+function startGame() {
+    document.getElementById('overlay').style.display = 'none';
+    gameRunning = true;
+    loop();
 }
 
-window.onkeydown = e => { 
-    keys[e.code] = true; 
-    if(e.code === 'Insert') document.getElementById('menu').style.display = 
-        (document.getElementById('menu').style.display === 'block' ? 'none' : 'block');
+window.onkeydown = e => {
+    keys[e.code] = true;
+    if(e.code === 'Insert') {
+        const m = document.getElementById('menu');
+        m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+    }
+    if(e.code === 'KeyV') toggleDesync();
 };
 window.onkeyup = e => keys[e.code] = false;
 
-// ПРОВЕРКА КОЛЛИЗИИ ДЛЯ ДВИЖЕНИЯ
-function isColliding(x, y) {
-    // Границы экрана
-    if (x < 20 || x > canvas.width - 20 || y < 20 || y > canvas.height - 20) return true;
-    // Стены
+function toggleDesync() {
+    isDs = !isDs;
+    document.getElementById('ds-status').innerText = isDs ? 'DESYNC ACTIVE' : 'SYNCED';
+    document.getElementById('ds-status').style.color = isDs ? '#ff00ff' : '#0055ff';
+}
+
+function getShotImpact(x1, y1, x2, y2) {
+    let penalty = 1;
     for (let w of walls) {
-        if (x > w.x - 15 && x < w.x + w.w + 15 && y > w.y - 15 && y < w.y + w.h + 15) return true;
-    }
-    return false;
-}
-
-// ПРОВЕРКА ЛИНИИ ВИДИМОСТИ ДЛЯ ПУЛЬ
-function checkLineWall(x1, y1, x2, y2) {
-    for (let w of walls) {
-        if (intersect(x1, y1, x2, y2, w.x, w.y, w.x+w.w, w.y+w.h)) return true;
-    }
-    return false;
-}
-
-function intersect(x1, y1, x2, y2, minX, minY, maxX, maxY) {
-    let t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
-    for (let i = 0; i < 4; i++) {
-        let p = i==0?-dx:i==1?dx:i==2?-dy:dy;
-        let q = i==0?x1-minX:i==1?maxX-x1:i==2?y1-minY:maxY-y1;
-        if(p==0 && q<0) return false;
-        let r = q/p;
-        if(p<0) { if(r>t1) return false; if(r>t0) t0=r; }
-        else if(p>0) { if(r<t0) return false; if(r<t1) t1=r; }
-    }
-    return t0 <= t1;
-}
-
-function performShot(atk, tgt, isLocal) {
-    const now = performance.now();
-    if (now - atk.lastShot < 800) return;
-
-    const atkMuzzle = {
-        x: atk.x + Math.cos(atk.angle * Math.PI / 180) * 25,
-        y: atk.y + Math.sin(atk.angle * Math.PI / 180) * 25
-    };
-    const tgtMuzzle = {
-        x: tgt.x + Math.cos(tgt.angle * Math.PI / 180) * 25,
-        y: tgt.y + Math.sin(tgt.angle * Math.PI / 180) * 25
-    };
-
-    // Чит видит либо тело, либо торчащее дуло
-    const canSeeCenter = !checkLineWall(atkMuzzle.x, atkMuzzle.y, tgt.x, tgt.y);
-    const canSeeMuzzle = !checkLineWall(atkMuzzle.x, atkMuzzle.y, tgtMuzzle.x, tgtMuzzle.y);
-
-    if (canSeeCenter || canSeeMuzzle) {
-        let hc = isLocal ? parseInt(document.getElementById('hc').value) : 65;
-        if (!isLocal) {
-            hc -= (parseInt(document.getElementById('aa-speed').value) / 10 + parseInt(document.getElementById('aa-jitter').value) / 15);
+        if (lineRect(x1, y1, x2, y2, w.x, w.y, w.w, w.h)) {
+            if (!w.pen) return 0;
+            penalty = 0.5;
         }
-
-        const isHit = Math.random() < (hc / 100);
-        const endX = isHit ? (canSeeCenter ? tgt.x : tgtMuzzle.x) : tgt.x + (Math.random()-0.5)*200;
-        const endY = isHit ? (canSeeCenter ? tgt.y : tgtMuzzle.y) : tgt.y + (Math.random()-0.5)*200;
-
-        tracers.push({x1: atkMuzzle.x, y1: atkMuzzle.y, x2: endX, y2: endY, o: 1, c: isLocal?'#0011ff':'#ff4444'});
-        
-        if (isHit) {
-            tgt.hp -= 25;
-            addLog(`${isLocal?'Enemy':'Local'} hit -25`);
-            if (tgt.hp <= 0) {
-                tgt.hp = 100;
-                tgt.x = isLocal ? spawns.bot.x : spawns.player.x;
-                tgt.y = isLocal ? spawns.bot.y : spawns.player.y;
-            }
-        }
-        atk.lastShot = now;
     }
+    return penalty;
 }
 
-function update() {
+function lineRect(x1, y1, x2, y2, rx, ry, rw, rh) {
+    const left = lineLine(x1, y1, x2, y2, rx, ry, rx, ry + rh);
+    const right = lineLine(x1, y1, x2, y2, rx + rw, ry, rx + rw, ry + rh);
+    const top = lineLine(x1, y1, x2, y2, rx, ry, rx + rw, ry);
+    const bottom = lineLine(x1, y1, x2, y2, rx, ry + rh, rx + rw, ry + rh);
+    return left || right || top || bottom;
+}
+
+function lineLine(x1, y1, x2, y2, x3, y3, x4, y4) {
+    let uA = ((x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+    let uB = ((x2-x1)*(y1-y3) - (y2-y1)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+    return (uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1);
+}
+
+function loop() {
+    if(!gameRunning) return;
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
-    // ДВИЖЕНИЕ ИГРОКА С КОЛЛИЗИЕЙ
-    let nextX = player.x, nextY = player.y;
-    if(keys['KeyW']) nextY -= 4;
-    if(keys['KeyS']) nextY += 4;
-    if(keys['KeyA']) nextX -= 4;
-    if(keys['KeyD']) nextX += 4;
+    let baseSpd = 2.5; 
+    if(keys['Space'] && document.getElementById('bhop-en').checked) {
+        player.bSpeed = Math.min(player.bSpeed + 0.1, 5);
+    } else {
+        player.bSpeed *= 0.9;
+    }
+    let curSpd = baseSpd + player.bSpeed;
 
-    if (!isColliding(nextX, player.y)) player.x = nextX;
-    if (!isColliding(player.x, nextY)) player.y = nextY;
+    let moveX = 0, moveY = 0;
+    if(keys['KeyW']) moveY -= curSpd; if(keys['KeyS']) moveY += curSpd;
+    if(keys['KeyA']) moveX -= curSpd; if(keys['KeyD']) moveX += curSpd;
 
-    // КРУТИЛКА
-    player.angle += (parseInt(document.getElementById('aa-speed').value) * 0.1) + (Math.random()-0.5) * parseInt(document.getElementById('aa-jitter').value);
+    if(!checkWallCollision(player.x + moveX, player.y)) player.x += moveX;
+    if(!checkWallCollision(player.x, player.y + moveY)) player.y += moveY;
 
-    // ДВИЖЕНИЕ БОТА (HvH AI)
+    if(!isDs) { real.x = player.x; real.y = player.y; }
+
+    player.angle += 5 + (Math.random()-0.5) * document.getElementById('aa-jit').value;
+
+    if(Date.now() > bot.wait) {
+        bot.targetX = 800 + Math.random() * 400;
+        bot.targetY = 100 + Math.random() * 500;
+        bot.wait = Date.now() + 1000 + Math.random() * 2000;
+    }
+    bot.x += (bot.targetX - bot.x) * 0.02;
+    bot.y += (bot.targetY - bot.y) * 0.02;
     bot.angle -= 15;
-    let bNextY = bot.y + bot.dir * 4;
-    if (isColliding(bot.x, bNextY)) bot.dir *= -1;
-    else bot.y = bNextY;
 
-    bot.moveX = Math.sin(Date.now() / 600) * 3;
-    if (!isColliding(bot.x + bot.moveX, bot.y)) bot.x += bot.moveX;
+    processShot(player, bot, true);
+    processShot(bot, real, false);
 
-    performShot(player, bot, true);
-    performShot(bot, player, false);
+    draw();
+    requestAnimationFrame(loop);
+}
 
-    // DRAWING
-    ctx.fillStyle = '#050505'; ctx.fillRect(0,0,canvas.width, canvas.height);
-    ctx.fillStyle = '#111'; ctx.strokeStyle = '#333';
-    walls.forEach(w => { ctx.fillRect(w.x, w.y, w.w, w.h); ctx.strokeRect(w.x, w.y, w.w, w.h); });
+function checkWallCollision(x, y) {
+    for(let w of walls) {
+        if(!w.pen && x > w.x-20 && x < w.x+w.w+20 && y > w.y-20 && y < w.y+w.h+20) return true;
+    }
+    return false;
+}
 
-    tracers.forEach((t, i) => {
-        ctx.strokeStyle = t.c; ctx.globalAlpha = t.o;
-        ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
-        t.o -= 0.05; if(t.o <= 0) tracers.splice(i, 1);
+function processShot(atk, tgt, isL) {
+    if(Date.now() - atk.lastS < 800) return;
+    const impact = getShotImpact(atk.x, atk.y, tgt.x, tgt.y);
+    if(impact === 0) return;
+
+    if(isL && Math.hypot(atk.x-tgt.x, atk.y-tgt.y) > document.getElementById('fov').value) return;
+
+    const hit = Math.random() < (document.getElementById('hc').value / 100);
+    tracers.push({x1: atk.x, y1: atk.y, x2: hit?tgt.x:tgt.x+50, y2: hit?tgt.y:tgt.y+50, o:1, c: isL?'#0055ff':'#ff3333'});
+    
+    if(hit) {
+        tgt.hp -= (25 * impact);
+        if(isL) hitmarker = 10;
+        if(tgt.hp <= 0) { tgt.hp = 100; tgt.x = isL?1000:200; }
+    }
+    atk.lastS = Date.now();
+}
+
+function draw() {
+    ctx.fillStyle = '#050507'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    
+    walls.forEach(w => {
+        ctx.fillStyle = w.pen ? 'rgba(100, 100, 100, 0.4)' : '#15171e';
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        if(w.pen) { ctx.setLineDash([5, 5]); ctx.strokeStyle = '#444'; ctx.strokeRect(w.x, w.y, w.w, w.h); ctx.setLineDash([]); }
     });
 
-    drawEnt(player, '#0011ff', 'YOU');
-    drawEnt(bot, '#ff4444', 'ENEMY');
+    tracers.forEach((t, i) => {
+        ctx.globalAlpha = t.o; ctx.strokeStyle = t.c;
+        ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
+        t.o -= 0.05; if(t.o<=0) tracers.splice(i,1);
+    });
+    ctx.globalAlpha = 1;
 
-    document.getElementById('stats').innerText = `HP: ${player.hp} | Enemy: ${bot.hp}`;
-    logs.innerHTML = msgQueue.map(m => `<div style="opacity:${m.o}">${m.t}</div>`).join('');
-    msgQueue.forEach(m => m.o -= 0.005);
+    if(hitmarker > 0) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        let s = 10; let cx = canvas.width/2, cy = canvas.height/2;
+        ctx.beginPath(); ctx.moveTo(cx-s, cy-s); ctx.lineTo(cx+s, cy+s); ctx.moveTo(cx+s, cy-s); ctx.lineTo(cx-s, cy+s);
+        ctx.stroke(); hitmarker--;
+    }
 
-    requestAnimationFrame(update);
+    if(isDs) drawEnt(real.x, real.y, player.angle, 'rgba(0, 85, 255, 0.2)', 'REAL');
+    drawEnt(player.x, player.y, player.angle, '#0055ff', 'LOCAL');
+    drawEnt(bot.x, bot.y, bot.angle, '#ff3333', 'ENEMY');
+
+    document.getElementById('hp').innerText = Math.floor(player.hp);
+    document.getElementById('b-spd').innerText = player.bSpeed.toFixed(1);
 }
 
-function drawEnt(e, color, label) {
-    ctx.strokeStyle = color;
-    ctx.strokeRect(e.x-20, e.y-20, 40, 40);
-    ctx.fillStyle = color; ctx.font = '10px Arial'; ctx.fillText(label, e.x-20, e.y-25);
-    ctx.save();
-    ctx.translate(e.x, e.y); ctx.rotate(e.angle * Math.PI / 180);
-    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fill(); ctx.stroke();
+function drawEnt(x, y, a, c, l) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = c; ctx.strokeRect(-20, -20, 40, 40);
+    ctx.rotate(a * Math.PI / 180);
+    ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fillStyle = '#08090c'; ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(25, 0); ctx.stroke();
     ctx.restore();
+    ctx.fillStyle = c; ctx.fillText(l, x-20, y-25);
 }
-
-update();
 </script>
 </body>
-
 </html>
