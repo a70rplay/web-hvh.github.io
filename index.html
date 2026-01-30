@@ -2,235 +2,230 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>dhack.xyz | web-hvh</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meet Pro: Full Suite</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #050507; font-family: 'Segoe UI', sans-serif; color: #eee; }
-        canvas { display: block; }
-
-        #overlay {
-            position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, #0c0d12 0%, #050505 100%);
-            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;
+        :root {
+            --bg: #202124; --card: #3c4043; --accent: #8ab4f8; --danger: #ea4335; --voice: #81c995;
         }
-        .start-btn {
-            padding: 15px 40px; background: #0055ff; color: white; border: none; cursor: pointer;
-            font-weight: bold; font-size: 20px; transition: 0.3s; border-radius: 4px; box-shadow: 0 0 20px rgba(0,85,255,0.4);
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: var(--bg); color: white; }
+        
+        /* ЛОББИ */
+        #lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 20px; }
+        .preview-container { position: relative; width: 480px; height: 270px; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid #5f6368; }
+        #preview-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        
+        /* КОМНАТА */
+        #room { display: none; flex-direction: column; height: 100vh; }
+        #video-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; padding: 20px; flex: 1; overflow: auto; }
+        
+        .video-item { 
+            background: #000; border-radius: 12px; overflow: hidden; width: 100%; max-width: 600px; 
+            aspect-ratio: 16/9; position: relative; border: 4px solid transparent; transition: 0.3s;
         }
-        .start-btn:hover { background: #0044cc; transform: scale(1.05); }
+        .video-item video { width: 100%; height: 100%; object-fit: cover; }
+        .mirror { transform: scaleX(-1); }
+        .video-off video { visibility: hidden; }
+        .speaking { border-color: var(--voice) !important; box-shadow: 0 0 15px var(--voice); }
 
-        #menu {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 550px; height: 400px; background: #0c0d12; border: 1px solid #1f222c;
-            display: none; flex-direction: row; z-index: 1000; box-shadow: 0 10px 40px #000;
-        }
-        #sidebar { width: 140px; background: #090a0e; border-right: 1px solid #1f222c; padding: 15px; }
-        #content { flex: 1; padding: 20px; }
-        .active-tab { color: #0055ff; font-weight: bold; border-left: 2px solid #0055ff; padding-left: 10px; }
-        .row { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 13px; }
-        input[type="range"] { accent-color: #0055ff; }
+        /* ИКОНКИ СТАТУСА */
+        .status-icons { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10; }
+        .icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; background: rgba(0,0,0,0.6); }
+        .icon-off { background: var(--danger); }
 
-        #hud { position: absolute; bottom: 20px; left: 20px; font-family: 'Consolas'; pointer-events: none; }
+        /* КНОПКИ УПРАВЛЕНИЯ */
+        .bottom-bar { height: 80px; display: flex; align-items: center; justify-content: center; gap: 15px; }
+        .btn { width: 50px; height: 50px; border-radius: 50%; border: 1px solid #5f6368; background: #3c4043; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .btn.off { background: var(--danger); border: none; }
+        .btn-screen.active { background: var(--accent); color: #202124; }
+        .btn-join { background: var(--accent); color: #202124; padding: 12px 40px; border-radius: 25px; border: none; font-weight: bold; cursor: pointer; }
+        
+        .name-tag { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 4px; font-size: 14px; z-index: 10; }
     </style>
 </head>
 <body>
 
-<div id="overlay">
-    <h1 style="color: #fff; letter-spacing: 5px; margin-bottom: 5px;">DHACK<span style="color:#0055ff">.XYZ</span></h1>
-    <p style="color: #444; margin-bottom: 30px;">Build: stable_v2.0.26</p>
-    <button class="start-btn" onclick="startGame()">CONNECT TO HVH_SERVER</button>
-</div>
-
-<div id="menu">
-    <div id="sidebar">
-        <div style="margin-bottom: 30px; font-size: 18px; font-weight: 900;">MENU</div>
-        <div class="active-tab">LEGIT/RAGE</div>
-        <div style="margin-top: 15px; color: #555;">VISUALS</div>
-        <div style="margin-top: 15px; color: #555;">MISC</div>
+    <div id="lobby">
+        <h2>Подготовка к звонку</h2>
+        <div class="preview-container" id="lobby-box">
+            <video id="preview-video" autoplay muted playsinline></video>
+            <div class="status-icons">
+                <div id="lobby-mic-status" class="icon">🎤</div>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:-25px; z-index:20;">
+            <button id="l-mic" class="btn" onclick="toggleMic()">🎤</button>
+            <button id="l-vid" class="btn" onclick="toggleVid()">📷</button>
+        </div>
+        <input type="text" id="user-name" placeholder="Твой ник" style="padding:10px; border-radius:8px; border:none; width:250px;">
+        <input type="text" id="room-name" placeholder="Комната" style="padding:10px; border-radius:8px; border:none; width:250px;">
+        <button class="btn-join" onclick="joinRoom()">Зайти</button>
     </div>
-    <div id="content">
-        <div class="row"><span>Aimbot FOV</span> <input type="range" id="fov" min="50" max="800" value="400"></div>
-        <div class="row"><span>Hitchance</span> <input type="range" id="hc" value="80"></div>
-        <div class="row"><span>Bhop Mode</span> <input type="checkbox" id="bhop-en" checked></div>
-        <div class="row"><span>AA Jitter</span> <input type="range" id="aa-jit" value="45"></div>
+
+    <div id="room">
+        <div id="video-grid"></div>
+        <div class="bottom-bar">
+            <button id="r-mic" class="btn" onclick="toggleMic()">🎤</button>
+            <button id="r-vid" class="btn" onclick="toggleVid()">📷</button>
+            <button id="r-screen" class="btn btn-screen" onclick="toggleScreen()">🖥️</button>
+            <button class="btn" style="background:var(--danger);" onclick="location.reload()">📞</button>
+        </div>
     </div>
-</div>
-
-<div id="hud">
-    <div id="ds-status" style="color: #0055ff;">SYNCED</div>
-    HP: <span id="hp">100</span> | B-HOP SPEED: <span id="b-spd">0</span><br>
-    TARGET: <span id="target">NONE</span>
-</div>
-
-<canvas id="game"></canvas>
 
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+    let myStream;
+    let currentScreenStream;
+    let isMic = true;
+    let isVid = true;
+    let isSharing = false;
 
-let gameRunning = false;
-let player = { x: 200, y: 350, hp: 100, angle: 0, lastS: 0, velX: 0, velY: 0, bSpeed: 0 };
-let real = { x: 200, y: 350 };
-let bot = { x: 1000, y: 350, hp: 100, angle: 0, lastS: 0, targetX: 1000, targetY: 350, wait: 0 };
-let walls = [
-    {x: 550, y: 100, w: 40, h: 200, pen: false},
-    {x: 550, y: 300, w: 40, h: 150, pen: true},
-    {x: 550, y: 450, w: 40, h: 200, pen: false},
-    {x: 300, y: 300, w: 60, h: 60, pen: true}
-];
+    // Инициализация
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+        myStream = stream;
+        document.getElementById('preview-video').srcObject = stream;
+    });
 
-let tracers = [], keys = {}, isDs = false;
-let hitmarker = 0;
-
-function startGame() {
-    document.getElementById('overlay').style.display = 'none';
-    gameRunning = true;
-    loop();
-}
-
-window.onkeydown = e => {
-    keys[e.code] = true;
-    if(e.code === 'Insert') {
-        const m = document.getElementById('menu');
-        m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+    function toggleMic() {
+        isMic = !isMic;
+        if (myStream) myStream.getAudioTracks()[0].enabled = isMic;
+        updateUI();
     }
-    if(e.code === 'KeyV') toggleDesync();
-};
-window.onkeyup = e => keys[e.code] = false;
 
-function toggleDesync() {
-    isDs = !isDs;
-    document.getElementById('ds-status').innerText = isDs ? 'DESYNC ACTIVE' : 'SYNCED';
-    document.getElementById('ds-status').style.color = isDs ? '#ff00ff' : '#0055ff';
-}
+    function toggleVid() {
+        isVid = !isVid;
+        if (myStream) myStream.getVideoTracks()[0].enabled = isVid;
+        updateUI();
+    }
 
-function getShotImpact(x1, y1, x2, y2) {
-    let penalty = 1;
-    for (let w of walls) {
-        if (lineRect(x1, y1, x2, y2, w.x, w.y, w.w, w.h)) {
-            if (!w.pen) return 0;
-            penalty = 0.5;
+    // ДЕМОНСТРАЦИЯ ЭКРАНА
+    async function toggleScreen() {
+        if (!isSharing) {
+            try {
+                currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                isSharing = true;
+                
+                // Меняем видео в своем боксе
+                const myVideo = document.querySelector('#me video');
+                if (myVideo) {
+                    myVideo.srcObject = currentScreenStream;
+                    myVideo.classList.remove('mirror'); // Экран не надо зеркалить
+                }
+                
+                document.getElementById('r-screen').classList.add('active');
+
+                // Если демонстрация прекращена через кнопку браузера
+                currentScreenStream.getVideoTracks()[0].onended = () => stopScreenShare();
+            } catch (e) { console.error(e); }
+        } else {
+            stopScreenShare();
         }
     }
-    return penalty;
-}
 
-function lineRect(x1, y1, x2, y2, rx, ry, rw, rh) {
-    const left = lineLine(x1, y1, x2, y2, rx, ry, rx, ry + rh);
-    const right = lineLine(x1, y1, x2, y2, rx + rw, ry, rx + rw, ry + rh);
-    const top = lineLine(x1, y1, x2, y2, rx, ry, rx + rw, ry);
-    const bottom = lineLine(x1, y1, x2, y2, rx, ry + rh, rx + rw, ry + rh);
-    return left || right || top || bottom;
-}
-
-function lineLine(x1, y1, x2, y2, x3, y3, x4, y4) {
-    let uA = ((x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
-    let uB = ((x2-x1)*(y1-y3) - (y2-y1)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
-    return (uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1);
-}
-
-function loop() {
-    if(!gameRunning) return;
-    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-
-    let baseSpd = 2.5; 
-    if(keys['Space'] && document.getElementById('bhop-en').checked) {
-        player.bSpeed = Math.min(player.bSpeed + 0.1, 5);
-    } else {
-        player.bSpeed *= 0.9;
-    }
-    let curSpd = baseSpd + player.bSpeed;
-
-    let moveX = 0, moveY = 0;
-    if(keys['KeyW']) moveY -= curSpd; if(keys['KeyS']) moveY += curSpd;
-    if(keys['KeyA']) moveX -= curSpd; if(keys['KeyD']) moveX += curSpd;
-
-    if(!checkWallCollision(player.x + moveX, player.y)) player.x += moveX;
-    if(!checkWallCollision(player.x, player.y + moveY)) player.y += moveY;
-
-    if(!isDs) { real.x = player.x; real.y = player.y; }
-
-    player.angle += 5 + (Math.random()-0.5) * document.getElementById('aa-jit').value;
-
-    if(Date.now() > bot.wait) {
-        bot.targetX = 800 + Math.random() * 400;
-        bot.targetY = 100 + Math.random() * 500;
-        bot.wait = Date.now() + 1000 + Math.random() * 2000;
-    }
-    bot.x += (bot.targetX - bot.x) * 0.02;
-    bot.y += (bot.targetY - bot.y) * 0.02;
-    bot.angle -= 15;
-
-    processShot(player, bot, true);
-    processShot(bot, real, false);
-
-    draw();
-    requestAnimationFrame(loop);
-}
-
-function checkWallCollision(x, y) {
-    for(let w of walls) {
-        if(!w.pen && x > w.x-20 && x < w.x+w.w+20 && y > w.y-20 && y < w.y+w.h+20) return true;
-    }
-    return false;
-}
-
-function processShot(atk, tgt, isL) {
-    if(Date.now() - atk.lastS < 800) return;
-    const impact = getShotImpact(atk.x, atk.y, tgt.x, tgt.y);
-    if(impact === 0) return;
-
-    if(isL && Math.hypot(atk.x-tgt.x, atk.y-tgt.y) > document.getElementById('fov').value) return;
-
-    const hit = Math.random() < (document.getElementById('hc').value / 100);
-    tracers.push({x1: atk.x, y1: atk.y, x2: hit?tgt.x:tgt.x+50, y2: hit?tgt.y:tgt.y+50, o:1, c: isL?'#0055ff':'#ff3333'});
-    
-    if(hit) {
-        tgt.hp -= (25 * impact);
-        if(isL) hitmarker = 10;
-        if(tgt.hp <= 0) { tgt.hp = 100; tgt.x = isL?1000:200; }
-    }
-    atk.lastS = Date.now();
-}
-
-function draw() {
-    ctx.fillStyle = '#050507'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    
-    walls.forEach(w => {
-        ctx.fillStyle = w.pen ? 'rgba(100, 100, 100, 0.4)' : '#15171e';
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        if(w.pen) { ctx.setLineDash([5, 5]); ctx.strokeStyle = '#444'; ctx.strokeRect(w.x, w.y, w.w, w.h); ctx.setLineDash([]); }
-    });
-
-    tracers.forEach((t, i) => {
-        ctx.globalAlpha = t.o; ctx.strokeStyle = t.c;
-        ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
-        t.o -= 0.05; if(t.o<=0) tracers.splice(i,1);
-    });
-    ctx.globalAlpha = 1;
-
-    if(hitmarker > 0) {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-        let s = 10; let cx = canvas.width/2, cy = canvas.height/2;
-        ctx.beginPath(); ctx.moveTo(cx-s, cy-s); ctx.lineTo(cx+s, cy+s); ctx.moveTo(cx+s, cy-s); ctx.lineTo(cx-s, cy+s);
-        ctx.stroke(); hitmarker--;
+    function stopScreenShare() {
+        isSharing = false;
+        if (currentScreenStream) {
+            currentScreenStream.getTracks().forEach(track => track.stop());
+        }
+        const myVideo = document.querySelector('#me video');
+        if (myVideo) {
+            myVideo.srcObject = myStream;
+            myVideo.classList.add('mirror');
+        }
+        document.getElementById('r-screen').classList.remove('active');
     }
 
-    if(isDs) drawEnt(real.x, real.y, player.angle, 'rgba(0, 85, 255, 0.2)', 'REAL');
-    drawEnt(player.x, player.y, player.angle, '#0055ff', 'LOCAL');
-    drawEnt(bot.x, bot.y, bot.angle, '#ff3333', 'ENEMY');
+    function updateUI() {
+        document.querySelectorAll('#l-mic, #r-mic').forEach(b => b.classList.toggle('off', !isMic));
+        document.querySelectorAll('#l-vid, #r-vid').forEach(b => b.classList.toggle('off', !isVid));
+        
+        const lobbyMic = document.getElementById('lobby-mic-status');
+        lobbyMic.innerText = isMic ? "🎤" : "🔇";
+        lobbyMic.classList.toggle('icon-off', !isMic);
+        document.getElementById('lobby-box').classList.toggle('video-off', !isVid);
 
-    document.getElementById('hp').innerText = Math.floor(player.hp);
-    document.getElementById('b-spd').innerText = player.bSpeed.toFixed(1);
-}
+        const myBox = document.getElementById('me');
+        if (myBox) {
+            myBox.classList.toggle('video-off', !isVid);
+            const micIcon = myBox.querySelector('.icon');
+            micIcon.innerText = isMic ? "🎤" : "🔇";
+            micIcon.classList.toggle('icon-off', !isMic);
+        }
+    }
 
-function drawEnt(x, y, a, c, l) {
-    ctx.save(); ctx.translate(x, y);
-    ctx.strokeStyle = c; ctx.strokeRect(-20, -20, 40, 40);
-    ctx.rotate(a * Math.PI / 180);
-    ctx.beginPath(); ctx.arc(0,0,15,0,Math.PI*2); ctx.fillStyle = '#08090c'; ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(25, 0); ctx.stroke();
-    ctx.restore();
-    ctx.fillStyle = c; ctx.fillText(l, x-20, y-25);
-}
+    function joinRoom() {
+        const room = document.getElementById('room-name').value;
+        const name = document.getElementById('user-name').value || "Бро";
+        if (!room) return alert("Введи комнату!");
+
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('room').style.display = 'flex';
+
+        const myPeer = new Peer(`${name}-${room}-${Math.floor(Math.random()*999)}`);
+        
+        createVideoBox(myStream, name + " (Вы)", 'me', true);
+        updateUI();
+
+        myPeer.on('call', call => {
+            call.answer(myStream);
+            call.on('stream', remoteStream => {
+                createVideoBox(remoteStream, "Друг", call.peer, false);
+            });
+        });
+    }
+
+    function createVideoBox(stream, labelText, id, isMe) {
+        if (document.getElementById(id)) return;
+        const grid = document.getElementById('video-grid');
+        const box = document.createElement('div');
+        box.className = 'video-item';
+        box.id = id;
+
+        const v = document.createElement('video');
+        v.srcObject = stream;
+        v.autoplay = true;
+        v.playsinline = true;
+        if (isMe) v.classList.add('mirror');
+
+        const label = document.createElement('div');
+        label.className = 'name-tag';
+        label.innerText = labelText;
+
+        const icons = document.createElement('div');
+        icons.className = 'status-icons';
+        const mic = document.createElement('div');
+        mic.className = 'icon';
+        mic.innerText = "🎤";
+        icons.append(mic);
+
+        box.append(v, label, icons);
+        grid.append(box);
+        setupVoiceDetection(stream, id);
+    }
+
+    function setupVoiceDetection(stream, boxId) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 64;
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const checkVoice = () => {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+            let avg = sum / dataArray.length;
+            const box = document.getElementById(boxId);
+            if (box) {
+                const currentMic = (boxId === 'me') ? isMic : true;
+                if (avg > 25 && currentMic) box.classList.add('speaking');
+                else box.classList.remove('speaking');
+            }
+            requestAnimationFrame(checkVoice);
+        };
+        checkVoice();
+    }
 </script>
 </body>
 </html>
